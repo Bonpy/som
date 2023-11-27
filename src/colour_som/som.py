@@ -1,10 +1,12 @@
-import argparse
+import logging
 from abc import ABC, abstractmethod
 from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 class SOMBase(ABC):
@@ -60,10 +62,40 @@ class SOMBase(ABC):
             bmu_idx (Tuple[int, int]): Coordinates of the BMU.
             iteration (int): Current iteration number.
             lr (float): Learning rate.
-            sigma (float): Sigma value for the neighborhood function.
+            sigma (float): Sigma value for the neighbourhood function.
             time_constant (float): Time constant for the learning rate decay.
         """
         pass
+
+    def load_model(self, filename: str) -> None:
+        """Loads SOM's weights from a file.
+
+        Args:
+            filename (str): The filename from which to load the weights.
+        """
+        self.weights = np.load(filename)
+        logging.info(f"SOM model loaded from {filename}")
+
+    def save_model(self, filename: str) -> None:
+        """Saves the SOM's weights to a file.
+
+        Args:
+            filename (str): The filename to save the weights.
+        """
+        np.save(filename, self.weights)
+        logging.info(f"SOM model saved to {filename}")
+
+    def predict(self, data: np.ndarray) -> np.ndarray:
+        """Finds the BMUs for a set of input vectors.
+
+        Args:
+            data (np.ndarray): The input vectors.
+
+        Returns:
+            np.ndarray: The grid coordinates of the BMUs.
+        """
+        bmus = np.array([self.find_bmu(vec) for vec in data])
+        return bmus
 
     def quantization_error(self, data: np.ndarray) -> float:
         """Calculates the quantization error of the SOM.
@@ -95,6 +127,11 @@ class SOMBase(ABC):
             lr (float): Initial learning rate. Defaults to 0.1.
         """
 
+        logging.info("Starting SOM training.")
+
+        # normalise data
+        data = (data - data.min()) / (data.max() - data.min())
+
         # calc initial sigma as half of grid's largest dim
         sigma = max(self.grid_width, self.grid_height) // 2
 
@@ -103,14 +140,30 @@ class SOMBase(ABC):
 
         # iterate over n iterations
         for i in tqdm(range(n_iterations)):
-            # randomly pick a data point as the input vector
+            # current input vector is randomly selected
+            # 1. more likely to cover diverse range of input space
+            # 2. prevent SOM overfocusing on patterns or specific areas of input space
             input_vec = data[np.random.randint(len(data))]
-
-            # find the bmu for the given vector
             bmu_idx = self.find_bmu(input_vec)
+            current_lr, current_sigma = self.update_weights(
+                input_vec, bmu_idx, i, lr, sigma, time_constant
+            )
 
-            # update weights based on input vector and bmu
-            self.update_weights(input_vec, bmu_idx, i, lr, sigma, time_constant)
+            # every 100 iterations, dump progress
+            # could probably put a early stopping mechanic here
+            # 1. norm of the diff b/w current and prev weights + convergence threshold
+            # 2. monitor quant error
+            # 3. lr threshold
+            # etc.
+            if i % 100 == 0:
+                # could also calculate topological error
+                q_error = self.quantization_error(data)
+                logging.info(
+                    f"iteration {i}, learning rate: {current_lr:.4f}, sigma: {current_sigma:.4f},"
+                    f" quantization error: {q_error:.4f}"
+                )
+
+        logging.info("Training completed.")
 
     def visualise(self, filename=None) -> None:
         """visualises the weight matrix of the SOM."""
@@ -167,18 +220,23 @@ class SOMSlow(SOMBase):
         sigma: float,
         time_constant: float,
     ) -> None:
-        """Updates the weights of the SOM for a given input vector.
+        """Updates the weights of the SOM for a given input vector and returns the updated learning rate and sigma.
 
         Args:
             input_vec (numpy.ndarray): Input vector.
             bmu_idx (Tuple[int, int]): Coordinates of the BMU.
             iteration (int): Current iteration number.
             lr (float): Learning rate.
-            sigma (float): Sigma value for the neighborhood function.
+            sigma (float): Sigma value for the neighbourhood function.
             time_constant (float): Time constant for the learning rate decay.
+
+        Returns:
+            Tuple[float, float]: Updated learning rate and sigma.
         """
 
         # update sigma and lr using exponential decay
+        # could also use linear or step decay, but rapid initial lr slow fine-tuning is fine for
+        # mapping colours
         sigma = sigma * np.exp(-iteration / time_constant)
         lr = lr * np.exp(-iteration / time_constant)
 
@@ -193,6 +251,8 @@ class SOMSlow(SOMBase):
 
                 # update weight vector of the node
                 self.weights[i, j] += radius * lr * (input_vec - self.weights[i, j])
+
+        return lr, sigma
 
 
 class SOMFast(SOMBase):
@@ -236,8 +296,11 @@ class SOMFast(SOMBase):
             bmu_idx (Tuple[int, int]): Coordinates of the BMU.
             iteration (int): Current iteration number.
             lr (float): Learning rate.
-            sigma (float): Sigma value for the neighborhood function.
+            sigma (float): Sigma value for the neighbourhood function.
             time_constant (float): Time constant for the learning rate decay.
+
+        Returns:
+            Tuple[float, float]: Updated learning rate and sigma.
         """
 
         # update sigma and lr using exponential decay
@@ -255,16 +318,4 @@ class SOMFast(SOMBase):
         influence = influence.reshape((self.grid_width, self.grid_height, 1))
         self.weights += influence * lr * (input_vec - self.weights)
 
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-i", "--input")
-
-
-def main():
-    args = parse_args()
-
-
-if __name__ == "__main__":
-    main()
+        return lr, sigma
