@@ -30,6 +30,7 @@ def test_train_regression_different_params(lr, n_iterations):
     expected_weights_path = this_dir.joinpath(
         f"expected_outputs/expected_weights_diff_params_{lr}_{n_iterations}.npy"
     )
+    # np.save(expected_weights_path, som.weights)
     expected_weights = np.load(expected_weights_path)
     np.testing.assert_array_almost_equal(som.weights, expected_weights)
 
@@ -53,5 +54,6 @@ def test_expected_weights_diff_data(data_seed):
     expected_weights_path = this_dir.joinpath(
         f"expected_outputs/expected_weights_diff_data_{data_seed}.npy"
     )
+    # np.save(expected_weights_path, som.weights)
     expected_weights = np.load(expected_weights_path)
     np.testing.assert_array_almost_equal(som.weights, expected_weights)
