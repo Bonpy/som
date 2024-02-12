@@ -2,6 +2,10 @@
 
 This project implements a Self-Organising Map (SOM) for colour categorisation using NumPy. It includes a Jupyter Notebook for exploration and a script for more structured experiments.
 
+
+abc
+
+
 ## Getting Started
 
 ### Prerequisites
